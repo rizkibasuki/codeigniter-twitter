@@ -96,15 +96,14 @@
 		{
 			if ( count($params['request']) > 0 )
 			{
-				/*$url .= '?';
+				$url .= '?';
 			
 				foreach( $params['request'] as $k => $v )
 				{
 					$url .= "{$k}={$v}&";
 				}
 				
-				$url = substr($url, 0, -1);*/
-				$url = http_build_query($params);
+				$url = substr($url, 0, -1);
 			}
 			
 			$this->_initConnection($url);
@@ -113,22 +112,22 @@
 		    return $response;
 		}
 		
-	public function post($url, $params)
+		public function post($url, $params, $multipart = false)
 		{
 			// Todo
 			$post = '';
-
+			
 			foreach ( $params['request'] as $k => $v )
 			{
 				$post .= "{$k}={$v}&";
 			}
-
+			
 			$post = substr($post, 0, -1);
-
+			
 			$this->_initConnection($url, $params);
 			curl_setopt($this->_ch, CURLOPT_POST, 1);
 			curl_setopt($this->_ch, CURLOPT_POSTFIELDS, $post);
-
+			
 			$response = $this->_addCurl($url, $params);
 
 		    return $response;
@@ -280,14 +279,14 @@
 		
 		private $_obj;
 		private $_tokens 				= array();
-		//private $_authorizationUrl 	= 'http://api.twitter.com/oauth/authorize';
-		private $_authorizationUrl   	= 'http://api.twitter.com/oauth/authenticate';
+		private $_authorizationUrl 		= 'http://api.twitter.com/oauth/authorize'; // Uncomment to authorize each time 
+		//private $_authorizationUrl   	= 'http://api.twitter.com/oauth/authenticate'; // Uncomment to authenticate without authorize each time
 		private $_requestTokenUrl 		= 'http://api.twitter.com/oauth/request_token';
 		private $_accessTokenUrl 		= 'http://api.twitter.com/oauth/access_token';
 		private $_signatureMethod 		= 'HMAC-SHA1';
 		private $_version 				= '1.0';
 		private $_apiVersion 			= '1.1';
-		private $_apiUrl 				= 'http://api.twitter.com/1';
+		private $_apiUrl 				= 'http://api.twitter.com';
 		private $_searchUrl				= 'http://search.twitter.com';
 		private $_uploadUrl     		= 'https://upload.twitter.com/1/';
 		private $_callback 				= NULL;
@@ -338,18 +337,8 @@
 		{
 			$response = $this->_httpRequest(strtoupper($method), $this->_apiUrl.'/'.$this->_apiVersion.'/'.$path.'.json', $args);
 			
-			// var_dump($response);
-			// die();
-			
 			return ( $response === NULL ) ? FALSE : $response->_result;
 		}
-		
-		public function upload($args = NULL)
-		{
- 	 		$this->_multipart = TRUE;
-			$response = $this->_httpRequest('POST', $this->_uploadUrl.'statuses/update_with_media.json', $args);
- 	 		return ( $response === NULL ) ? FALSE : $response->_result;
- 	 	}
 		
 		public function search($args = NULL)
 		{
@@ -517,8 +506,7 @@
 					break;
 
 					case 'POST':
-						//return $this->_connection->post($url, $params);
-						return $this->_connection->post($url, $params, $this->_multipart);
+						return $this->_connection->post($url, $params);
 					break;
 
 					case 'PUT':
@@ -566,12 +554,6 @@
 			
 			array_walk($oauth, array($this, '_encode_rfc3986'));
 			
-			if($this->_multipart)
-			{
-				$request_params = $params;
-				$params = array();
-			}
-			
 			if ( is_array($params) )
 			{
 				array_walk($params, array($this, '_encode_rfc3986'));
@@ -582,13 +564,7 @@
 			ksort($encodedParams);
 			
 			$oauth['oauth_signature'] = $this->_encode_rfc3986($this->_generateSignature($method, $url, $encodedParams));
-			//return array('request' => $params, 'oauth' => $oauth);
-			
-			if($this->_multipart){
-				return array('request' => $request_params, 'oauth' => $oauth);
-			} else {
-				return array('request' => $params, 'oauth' => $oauth);
-			}
+			return array('request' => $params, 'oauth' => $oauth);
 		}
 	
 		private function _generateNonce()
@@ -618,14 +594,7 @@
 			$concatenatedParams = $this->_encode_rfc3986(substr($concatenatedParams, 0, -1));
 
 			// normalize url
-			//$normalizedUrl = $this->_encode_rfc3986($this->_normalizeUrl($url));
-			// Using the normalized url when uploading generates a 401 issue, yet for other api calls there's not a problem...
- 	 		if($this->_multipart){
- 	 			$normalizedUrl = $this->_encode_rfc3986($url);
-			} else {
-				$normalizedUrl = $this->_encode_rfc3986($this->_normalizeUrl($url));
-			}
-			
+			$normalizedUrl = $this->_encode_rfc3986($this->_normalizeUrl($url));
 			$method = $this->_encode_rfc3986($method); // don't need this but why not?
 
 			$signatureBaseString = "{$method}&{$normalizedUrl}&{$concatenatedParams}";
