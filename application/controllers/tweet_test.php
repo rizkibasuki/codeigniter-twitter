@@ -56,6 +56,9 @@
 			
 			$user = $this->tweet->call('get', 'account/verify_credentials');
 			var_dump($user);
+
+			// Get header from the last call
+			$this->tweet->get_header()
 			
 			$friendship 	= $this->tweet->call('get', 'friendships/show', array('source_screen_name' => $user->screen_name, 'target_screen_name' => 'elliothaughin'));
 			var_dump($friendship);
