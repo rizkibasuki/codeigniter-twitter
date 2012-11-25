@@ -1,5 +1,18 @@
 <?php  if ( ! defined('BASEPATH')) exit('No direct script access allowed');
-	
+
+/**
+ * CodeIgniter Twitter
+ *
+ * A CodeIgniter library to interact with Api Twitter.
+ * Original author: elliothaughin
+ *
+ * @package        	CodeIgniter
+ * @category    	Libraries
+ * @author        	Marcos Sanz
+ * @link 			https://github.com/marsanla/codeigniter-twitter
+ * @license         http://www.opensource.org/licenses/mit-license.html
+ */
+ 
 	class tweet {
 		
 		private $_oauth = NULL;
@@ -24,14 +37,19 @@
 			return $this->_oauth->loggedIn();
 		}
 		
+		function get_header()
+		{
+			return $this -> _oauth -> getHeader();
+		}
+		
 		function set_callback($url)
 		{
 			$this->_oauth->setCallback($url);
 		}
 		
-		function login()
+		function login($sign_in_twitter = false)
 		{
-			return $this->_oauth->login();
+			return $this->_oauth->login($sign_in_twitter);
 		}
 		
 		function logout()
@@ -74,6 +92,8 @@
 		private $_mch = NULL;
 		private $_properties = array();
 		
+		public $header = NULL;
+		
 		function __construct()
 		{
 			$this->_mch = curl_multi_init();
@@ -90,6 +110,8 @@
 		{
 			$this->_ch = curl_init($url);
 			curl_setopt($this->_ch, CURLOPT_RETURNTRANSFER, TRUE);
+			curl_setopt($this->_ch, CURLOPT_VERBOSE, TRUE);
+			curl_setopt($this->_ch, CURLOPT_HEADER, TRUE);
 		}
 		
 		public function get($url, $params)
@@ -100,6 +122,8 @@
 			
 				foreach( $params['request'] as $k => $v )
 				{
+					$k = str_ireplace(array('+', '%7E'),array(' ', '~'),rawurlencode($k));
+					$v = str_ireplace(array('+', '%7E'),array(' ', '~'),rawurlencode($v));
 					$url .= "{$k}={$v}&";
 				}
 				
@@ -112,13 +136,14 @@
 		    return $response;
 		}
 		
-		public function post($url, $params, $multipart = false)
+		public function post($url, $params)
 		{
-			// Todo
 			$post = '';
 			
 			foreach ( $params['request'] as $k => $v )
 			{
+				$k = str_ireplace(array('+', '%7E'),array(' ', '~'),rawurlencode($k));
+				$v = str_ireplace(array('+', '%7E'),array(' ', '~'),rawurlencode($v));
 				$post .= "{$k}={$v}&";
 			}
 			
@@ -136,7 +161,7 @@
 		private function _addOauthHeaders(&$ch, $url, $oauthHeaders)
 		{
 			//$_h = array('Expect:');
-			$_h = array('Expect:', "Connection: Keep-Alive", "Cache-Control: no-cache", "User-Agent: " . $_SERVER['HTTP_USER_AGENT']);
+			$_h = array('Expect:', 'Connection: Keep-Alive', 'Cache-Control: no-cache', 'User-Agent: ' . $_SERVER['HTTP_USER_AGENT']);
 			$urlParts = parse_url($url);
 			$oauth = 'Authorization: OAuth realm="' . $urlParts['path'] . '",';
 			
@@ -159,7 +184,7 @@
 			}
 			
 			$ch = $this->_ch;
-			
+
 			$key = (string) $ch;
 			$this->_requests[$key] = $ch;
 			
@@ -202,9 +227,14 @@
 					{
 						$response = new tweetResponseOauth( (object) $this->_responses[$key] );
 						
+						if (isset($response -> __resp -> header -> status)) {
+							$response -> __resp -> header -> status = $response->__resp->code;
+							$this -> header = $response -> __resp -> header;	
+						}
+						
 						if ( $response->__resp->code !== 200 )
 						{
-							throw new tweetException($response->__resp->code.' | Request Failed: '.$response->__resp->data->request.' - '.$response->__resp->data->error);
+							throw new  tweetException($response->__resp->code.' | Request Failed: ' . $response -> __resp -> data -> errors[0] -> message);
 						}
 						
 						return $response;
@@ -222,8 +252,14 @@
 			while( $done = curl_multi_info_read($this->_mch) )
 			{
 				$key = (string) $done['handle'];
-				$this->_responses[$key]['data'] = curl_multi_getcontent($done['handle']);
 				
+				$header_size = curl_getinfo($done['handle'], CURLINFO_HEADER_SIZE);
+				$header = substr(curl_multi_getcontent($done['handle']), 0, $header_size);
+				$body = substr(curl_multi_getcontent($done['handle']), $header_size);
+				
+				$this->_responses[$key]['header'] = $header;
+				$this->_responses[$key]['data'] = $body;
+
 				foreach ( $this->_properties as $curl_key => $value )
 				{
 					$this->_responses[$key][$curl_key] = curl_getinfo($done['handle'], $value);
@@ -245,6 +281,8 @@
 			if ( strpos($this->__resp->type, 'json') !== FALSE )
 			{
 				$this->__resp->data = json_decode($this->__resp->data);
+				
+				$this->__resp->header = (object) $this -> _formatHeader($this->__resp->header);
 			}
 		}
 
@@ -273,26 +311,41 @@
 
 			return $result[$name];
 		}
+		
+		private function _formatHeader($header)
+		{
+			$result = explode("\n",$header);
+			
+			$result_header = array();
+			foreach ($result as $k => $v) {
+				if ( $k == 0 || trim($v) == '')
+					continue;
+				
+				list($key, $value) = array_pad(explode(':', $v), 2, null);
+				$result_header[strtolower(trim($key))] = trim($value);
+			}
+			
+			return $result_header;
+		}
 	}
 	
 	class tweetOauth extends tweetConnection {
 		
 		private $_obj;
-		private $_tokens 				= array();
-		private $_authorizationUrl 		= 'http://api.twitter.com/oauth/authorize'; // Uncomment to authorize each time 
-		//private $_authorizationUrl   	= 'http://api.twitter.com/oauth/authenticate'; // Uncomment to authenticate without authorize each time
-		private $_requestTokenUrl 		= 'http://api.twitter.com/oauth/request_token';
-		private $_accessTokenUrl 		= 'http://api.twitter.com/oauth/access_token';
-		private $_signatureMethod 		= 'HMAC-SHA1';
-		private $_version 				= '1.0';
-		private $_apiVersion 			= '1.1';
-		private $_apiUrl 				= 'http://api.twitter.com';
-		private $_searchUrl				= 'http://search.twitter.com';
-		private $_uploadUrl     		= 'https://upload.twitter.com/1/';
-		private $_callback 				= NULL;
-		private $_errors 				= array();
-		private $_enable_debug 			= FALSE;
-		private $_multipart 			= FALSE;
+		private $_tokens = array();
+		private $_authorizationUrl 	= 'http://api.twitter.com/oauth/authorize'; // Login each time
+		private $_authenticationUrl  = 'http://api.twitter.com/oauth/authenticate'; // Keep logged in
+		private $_requestTokenUrl 	= 'http://api.twitter.com/oauth/request_token';
+		private $_accessTokenUrl 	= 'http://api.twitter.com/oauth/access_token';
+		private $_signatureMethod 	= 'HMAC-SHA1';
+		private $_version 			= '1.0';
+		private $_apiVersion 		= '1.1';
+		private $_apiUrl 			= 'http://api.twitter.com';
+		private $_searchUrl			= 'http://search.twitter.com';
+		private $_responseType		= 'json';
+		private $_callback = NULL;
+		private $_errors = array();
+		private $_enable_debug = FALSE;
 		
 		function __construct()
 		{
@@ -333,16 +386,24 @@
 			$this->_enable_debug = $debug;
 		}
 		
+		public function getHeader()
+		{
+			return $this -> header;
+		}
+		
 		public function call($method, $path, $args = NULL)
 		{
-			$response = $this->_httpRequest(strtoupper($method), $this->_apiUrl.'/'.$this->_apiVersion.'/'.$path.'.json', $args);
+			$response = $this->_httpRequest(strtoupper($method), $this -> _apiUrl . '/' . $this -> _apiVersion . '/' . $path . '.' . $this -> _responseType, $args);
+			
+			// var_dump($response);
+			// die();
 			
 			return ( $response === NULL ) ? FALSE : $response->_result;
 		}
 		
 		public function search($args = NULL)
 		{
-			$response = $this->_httpRequest('GET', $this->_searchUrl.'/search.json', $args);
+			$response = $this->_httpRequest('GET', $this -> _searchUrl . '/search.' . $this -> _responseType, $args);
 			
 			return ( $response === NULL ) ? FALSE : $response->_result;
 		}
@@ -385,11 +446,11 @@
 			}
 		}
 		
-		public function login()
+		public function login($sign_in_twitter = false)
 		{
 			if ( ($this->_getAccessKey() === NULL || $this->_getAccessSecret() === NULL) )
 			{
-				header('Location: '.$this->_getAuthorizationUrl());
+				header('Location: '.$this->_getAuthorizationUrl($sign_in_twitter));
 				return;
 			}
 			
@@ -475,10 +536,13 @@
 			return $this->_setAccessTokens($tokens);
 		}
 		
-		private function _getAuthorizationUrl()
+		private function _getAuthorizationUrl($sign_in_twitter = false)
 		{
 			$token = $this->_getRequestToken();
-			return $this->_authorizationUrl.'?oauth_token=' . $token->oauth_token;
+			if ($sign_in_twitter) {
+				return $this -> _authenticationUrl . '?oauth_token=' . $token->oauth_token;
+			}
+			return $this -> _authorizationUrl . '?oauth_token=' . $token->oauth_token;
 		}
 		
 		private function _getRequestToken()
@@ -502,11 +566,15 @@
 				switch ( $method )
 				{
 					case 'GET':
-						return $this->_connection->get($url, $params);
+						$response = $this->_connection->get($url, $params);
+						$this -> header = $this -> _connection -> header;
+						return $response;
 					break;
 
 					case 'POST':
-						return $this->_connection->post($url, $params);
+						$response = $this->_connection->post($url, $params);
+						$this -> header = $this -> _connection -> header;
+						return $response;
 					break;
 
 					case 'PUT':
@@ -643,3 +711,6 @@
 		}
 
 	}
+
+/* End of file tweet.php */
+/* Location: ./application/libraries/tweet.php */
