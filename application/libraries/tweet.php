@@ -212,7 +212,7 @@ class tweetConnection {
 					}
 
 					if ($response -> __resp -> code !== 200) {
-						throw new Exception($response -> __resp -> code . ' | Request Failed: ' . $response -> __resp -> data -> errors[0] -> message);
+						throw new tweetException($response -> __resp -> code . ' | Request Failed: ' . $response -> __resp -> data -> errors[0] -> message);
 					}
 
 					return $response;
