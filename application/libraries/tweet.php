@@ -148,9 +148,13 @@ class tweetConnection {
 		$_h = array(
 			'Expect:', 
 			'Connection: Keep-Alive', 
-			'Cache-Control: no-cache', 
-			'User-Agent: ' . $_SERVER['HTTP_USER_AGENT']
+			'Cache-Control: no-cache'
 		);
+		
+		if (isset($_SERVER['HTTP_USER_AGENT'])) {
+			array_push($_h, 'User-Agent: ' . $_SERVER['HTTP_USER_AGENT']);
+		}
+		
 		$urlParts = parse_url($url);
 		$oauth = 'Authorization: OAuth realm="' . $urlParts['path'] . '",';
 
