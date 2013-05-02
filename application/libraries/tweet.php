@@ -505,6 +505,10 @@ class tweetOauth extends tweetConnection {
 		if (empty($params['oauth_signature']))
 			$params = $this -> _prepareParameters($method, $url, $params);
 
+		if (isset($_REQUEST['oauth_verifier'])){
+			$params["oauth"]["oauth_verifier"] = $_REQUEST['oauth_verifier'];
+		}
+
 		$this -> _connection = new tweetConnection();
 
 		try {
